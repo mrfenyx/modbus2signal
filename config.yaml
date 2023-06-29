@@ -9,6 +9,6 @@ modbus:
 signal:
   host: 192.168.2.25
   port: 4126
-  own_number: +4915203056948
-  send_number: +4915203056948
+  own_number: "+4915203056948"
+  send_number: "+4915203056948"
   check_frequency: 10

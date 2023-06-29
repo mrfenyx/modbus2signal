@@ -79,7 +79,10 @@ while True:
                     "number": f"{signal_own_number}",
                     "recipients": [f"{signal_send_number}"]
                 }
-                
+                logging.debug(f"URL for Signal: {url}")
+                logging.debug(f"Headers for Signal: {headers}")
+                logging.debug(f"Data for Signal: {json.dumps(data)}")
+
                 try:
                     response = requests.post(url, headers=headers, data=json.dumps(data))
                     response.raise_for_status()
