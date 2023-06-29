@@ -66,6 +66,21 @@ def read_register(client, address, length):
         logging.error(f"Failed to read register at address {address}: {e}")
         return None
 
+def read_idtag(client, modbus_config):
+    idtag_registers = ['idtag_1', 'idtag_2', 'idtag_3', 'idtag_4', 'idtag_5']
+    idtag = ''
+    
+    for reg in idtag_registers:
+        try:
+            value = read_register(client, int(modbus_config['registers'][reg]['address']), int(modbus_config['registers'][reg]['length']))
+            if value is not None:
+                # Convert the 32-bit value into bytes and decode into string, then strip leading whitespaces
+                idtag += bytes.fromhex(f'{value:08x}').decode('ascii', errors='ignore').lstrip()
+        except Exception as e:
+            logging.error(f"Failed to read {reg} register: {e}")
+    logging.debug(f"Got RFID Tag {idtag}")
+    return idtag
+
 
 if __name__ == "__main__":
     # Load configuration
@@ -120,6 +135,20 @@ if __name__ == "__main__":
             if status_value is not None:
                 status = statuses.get(status_value, 'unknown')
                 logging.debug(f"The status is {status}. Last status is {last_status}")
+
+                if status_value == 6:
+                    total_energy = read_register(
+                        client,
+                        int(modbus_config['registers']['total_energy']['address']),
+                        int(modbus_config['registers']['total_energy']['length'])
+                    )
+                    
+                    idtag = read_idtag(client, modbus_config)
+                    
+                    if idtag:
+                        message = f"RFID Card detected: {idtag}. Total Energy when charging started was {total_energy}."
+                        messenger.send_message(message)
+
                 if status != last_status:
                     last_status = status
                     message = f"Your charging point status is {status} ({status_value})"
