@@ -4,7 +4,30 @@ modbus:
   host: 192.168.2.159
   port: 4701
   registers:
-    status: 8092
+    status: 
+      address: 8092
+      length: 1
+    total_energy:
+      address: 8060
+      length: 2
+    charged_energy:
+      address: 705
+      length: 1
+    idtag_1:
+      address: 720
+      length: 2
+    idtag_2:
+      address: 722
+      length: 2
+    idtag_3:
+      address: 724
+      length: 2
+    idtag_4:
+      address: 726
+      length: 2
+    idtag_5:
+      address: 728
+      length: 2
 
 signal:
   host: 192.168.2.25
