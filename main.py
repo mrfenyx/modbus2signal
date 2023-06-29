@@ -8,13 +8,13 @@ import yaml
 
 
 class SignalMessenger:
-    
+
     def __init__(self, signal_host, signal_port, own_number, send_number):
         self.signal_host = signal_host
         self.signal_port = signal_port
         self.own_number = own_number
         self.send_number = send_number
-    
+
     def send_message(self, message):
         url = f'http://{self.signal_host}:{self.signal_port}/v2/send'
         headers = {'Content-Type': 'application/json'}
@@ -23,7 +23,7 @@ class SignalMessenger:
             "number": self.own_number,
             "recipients": [self.send_number]
         }
-        
+
         try:
             response = requests.post(url, headers=headers, data=json.dumps(data))
             response.raise_for_status()
@@ -32,6 +32,48 @@ class SignalMessenger:
             logging.error(f"HTTP error occurred: {http_err}")
         except Exception as e:
             logging.error(f"Failed to send message: {e}")
+
+
+class ModbusClient:
+
+    def __init__(self, host, port):
+        self.host = host
+        self.port = port
+        self.client = ModbusTcpClient(self.host, port=self.port)
+
+    def connect(self):
+        return self.client.connect()
+
+    def close(self):
+        self.client.close()
+
+    def read_register(self, address, length):
+        try:
+            result = self.client.read_holding_registers(address, length, slave=1)
+            if result.isError():
+                logging.error(f"Error reading register at address {address}")
+                return None
+
+            if length == 1:
+                return result.registers[0]
+            elif length == 2:
+                return (result.registers[0] << 16) + result.registers[1]
+            else:
+                logging.error(f"Unsupported register length: {length}")
+                return None
+        except Exception as e:
+            logging.error(f"Failed to read register at address {address}: {e}")
+            return None
+
+    def read_idtag(self, modbus_config):
+        idtag_registers = ['idtag_1', 'idtag_2', 'idtag_3', 'idtag_4', 'idtag_5']
+        idtag = ''
+        for reg in idtag_registers:
+            value = self.read_register(int(modbus_config['registers'][reg]['address']),
+                                       int(modbus_config['registers'][reg]['length']))
+            if value is not None:
+                idtag += bytes.fromhex(f'{value:08x}').decode('ascii', errors='ignore').lstrip()
+        return idtag
 
 
 def load_config(config_file):
@@ -46,57 +88,19 @@ def setup_logging(log_level):
     logging.basicConfig(level=numeric_level, format='%(asctime)s - %(levelname)s - %(message)s')
 
 
-def read_register(client, address, length):
-    try:
-        result = client.read_holding_registers(address, length, slave=1)
-        if result.isError():
-            logging.error(f"Error reading register at address {address}")
-            return None
-        
-        if length == 1:
-            value = result.registers[0]
-        elif length == 2:
-            value = (result.registers[0] << 16) + result.registers[1]
-        else:
-            logging.error(f"Unsupported register length: {length}")
-            return None
-
-        return value
-    except Exception as e:
-        logging.error(f"Failed to read register at address {address}: {e}")
-        return None
-
-def read_idtag(client, modbus_config):
-    idtag_registers = ['idtag_1', 'idtag_2', 'idtag_3', 'idtag_4', 'idtag_5']
-    idtag = ''
-    
-    for reg in idtag_registers:
-        try:
-            value = read_register(client, int(modbus_config['registers'][reg]['address']), int(modbus_config['registers'][reg]['length']))
-            if value is not None:
-                # Convert the 32-bit value into bytes and decode into string, then strip leading whitespaces
-                idtag += bytes.fromhex(f'{value:08x}').decode('ascii', errors='ignore').lstrip()
-        except Exception as e:
-            logging.error(f"Failed to read {reg} register: {e}")
-    logging.debug(f"Got RFID Tag {idtag}")
-    return idtag
-
-
 if __name__ == "__main__":
-    # Load configuration
     config = load_config('config.yaml')
-    
-    # Setup logging
     setup_logging(config['log_level'])
-    
-    # Extract configuration variables
-    modbus_config = config['modbus']
-    signal_config = config['signal']
-    
-    # Create SignalMessenger instance
-    messenger = SignalMessenger(signal_config['host'], signal_config['port'], signal_config['own_number'], signal_config['send_number'])
-    
-    # Mapping of register values to statuses
+
+    signal_messenger = SignalMessenger(config['signal']['host'], config['signal']['port'],
+                                       config['signal']['own_number'], config['signal']['send_number'])
+
+    modbus_client = ModbusClient(config['modbus']['host'], int(config['modbus']['port']))
+
+    if not modbus_client.connect():
+        logging.error("Failed to connect to Modbus server.")
+        exit(1)
+
     statuses = {
         0: 'available',
         1: 'occupied',
@@ -109,50 +113,50 @@ if __name__ == "__main__":
         8: 'suspendedev',
         9: 'finishing'
     }
-    
+
     last_status = None
+    
+    try:
+        while True:
+            try:
+                # Read status register
+                status_value = modbus_client.read_register(
+                    int(config['modbus']['registers']['status']['address']),
+                    int(config['modbus']['registers']['status']['length'])
+                )
 
-    while True:
-        logging.debug("Starting new loop iteration")
-        try:
-            client = ModbusTcpClient(modbus_config['host'], port=int(modbus_config['port']))
-            connection = client.connect()
-            logging.debug(f"Connected to client at {modbus_config['host']}:{modbus_config['port']}")
-        except Exception as e:
-            logging.error(f"Failed to connect to Modbus host: {e}")
-            time.sleep(int(signal_config['check_frequency']))
-            continue
+                if status_value is not None:
+                    status = statuses.get(status_value, 'unknown')
+                    logging.debug(f"The status is {status}. Last status is {last_status}")
 
-        if connection:
-            # Use the read_register function to get the status value
-            status_value = read_register(
-                client,
-                int(modbus_config['registers']['status']['address']),
-                int(modbus_config['registers']['status']['length'])
-            )
-            client.close()
+                    if status_value == 6:
+                        # Read total_energy and idtag registers
+                        total_energy = modbus_client.read_register(
+                            int(config['modbus']['registers']['total_energy']['address']),
+                            int(config['modbus']['registers']['total_energy']['length'])
+                        )
+                        idtag = modbus_client.read_idtag(config['modbus'])
 
-            if status_value is not None:
-                status = statuses.get(status_value, 'unknown')
-                logging.debug(f"The status is {status}. Last status is {last_status}")
+                        if idtag:
+                            message = f"RFID Card detected: {idtag}. Total Energy when charging started was {total_energy}."
+                            signal_messenger.send_message(message)
 
-                if status_value == 6:
-                    total_energy = read_register(
-                        client,
-                        int(modbus_config['registers']['total_energy']['address']),
-                        int(modbus_config['registers']['total_energy']['length'])
-                    )
-                    
-                    idtag = read_idtag(client, modbus_config)
-                    
-                    if idtag:
-                        message = f"RFID Card detected: {idtag}. Total Energy when charging started was {total_energy}."
-                        messenger.send_message(message)
+                    if status != last_status:
+                        last_status = status
+                        message = f"Your charging point status is {status} ({status_value})"
+                        signal_messenger.send_message(message)
 
-                if status != last_status:
-                    last_status = status
-                    message = f"Your charging point status is {status} ({status_value})"
-                    messenger.send_message(message)
+            except Exception as e:
+                logging.error(f"Error while reading Modbus registers: {e}")
 
-        logging.debug(f"Loop iteration complete, sleeping for {signal_config['check_frequency']} seconds")
-        time.sleep(int(signal_config['check_frequency']))
+            logging.debug(f"Loop iteration complete, sleeping for {config['signal']['check_frequency']} seconds")
+            time.sleep(int(config['signal']['check_frequency']))
+
+    except KeyboardInterrupt:
+    # Handle Ctrl+C gracefully
+        logging.info("Script interrupted by user.")
+    
+    finally:
+        # This code will execute even if the script is interrupted
+        logging.info("Closing Modbus client.")
+        modbus_client.close()
