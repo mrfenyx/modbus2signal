@@ -1,0 +1,14 @@
+log_level: DEBUG
+
+modbus: 
+  host: 192.168.2.159
+  port: 4701
+  registers:
+    status: 8092
+
+signal:
+  host: 192.168.2.25
+  port: 4126
+  own_number: +4915203056948
+  send_number: +4915203056948
+  check_frequency: 10

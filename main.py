@@ -4,22 +4,28 @@ import time
 import logging
 from pymodbus.client import ModbusTcpClient
 import requests
+import yaml
+
+# Load configuration from config.yaml
+with open('config.yaml', 'r') as file:
+    config = yaml.safe_load(file)
+
+# Extract configuration variables
+modbus_host = config['modbus']['host']
+modbus_port = int(config['modbus']['port'])
+modbus_register_status = int(config['modbus']['registers']['status'])
+signal_host = config['signal']['host']
+signal_port = config['signal']['port']
+signal_own_number = config['signal']['own_number']
+signal_send_number = config['signal']['send_number']
+frequency = int(config['signal']['check_frequency'])
+log_level = config['log_level']
 
 # Set up logging
-log_level = os.getenv('LOG_LEVEL', 'INFO').upper()
 numeric_level = getattr(logging, log_level, None)
 if not isinstance(numeric_level, int):
     raise ValueError(f'Invalid log level: {log_level}')
 logging.basicConfig(level=numeric_level, format='%(asctime)s - %(levelname)s - %(message)s')
-
-modbus_host = os.getenv('MODBUS_HOST')
-modbus_port = int(os.getenv('MODBUS_PORT'))
-modbus_register = int(os.getenv('MODBUS_REGISTER'))
-signal_host = os.getenv('SIGNAL_HOST')
-signal_port = os.getenv('SIGNAL_PORT')
-signal_own_number = os.getenv('SIGNAL_OWN_NUMBER')
-signal_send_number = os.getenv('SIGNAL_SEND_NUMBER')
-frequency = int(os.getenv('FREQUENCY'))
 
 # Mapping of register values to statuses
 statuses = {
@@ -50,8 +56,8 @@ while True:
 
     if connection:
         try:
-            result = client.read_holding_registers(modbus_register, 1, slave=1)
-            logging.debug(f"Got the following result for register {modbus_register}: {result.registers[0]}")  
+            result = client.read_holding_registers(modbus_register_status, 1, slave=1)
+            logging.debug(f"Got the following result for register {modbus_register_status}: {result.registers[0]}")  
         except Exception as e:
             logging.error(f"Failed to read from Modbus register: {e}")
             client.close()
