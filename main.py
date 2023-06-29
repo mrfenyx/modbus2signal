@@ -6,50 +6,47 @@ from pymodbus.client import ModbusTcpClient
 import requests
 import yaml
 
-# Load configuration from config.yaml
-with open('config.yaml', 'r') as file:
-    config = yaml.safe_load(file)
 
-# Extract configuration variables
-modbus_host = config['modbus']['host']
-modbus_port = int(config['modbus']['port'])
-modbus_register_status_address = int(config['modbus']['registers']['status']['address'])
-modbus_register_status_length = int(config['modbus']['registers']['status']['length'])
-signal_host = config['signal']['host']
-signal_port = config['signal']['port']
-signal_own_number = config['signal']['own_number']
-signal_send_number = config['signal']['send_number']
-frequency = int(config['signal']['check_frequency'])
-log_level = config['log_level']
+class SignalMessenger:
+    
+    def __init__(self, signal_host, signal_port, own_number, send_number):
+        self.signal_host = signal_host
+        self.signal_port = signal_port
+        self.own_number = own_number
+        self.send_number = send_number
+    
+    def send_message(self, message):
+        url = f'http://{self.signal_host}:{self.signal_port}/v2/send'
+        headers = {'Content-Type': 'application/json'}
+        data = {
+            "message": message,
+            "number": self.own_number,
+            "recipients": [self.send_number]
+        }
+        
+        try:
+            response = requests.post(url, headers=headers, data=json.dumps(data))
+            response.raise_for_status()
+            logging.info(f"Successfully sent message: {response.text}")
+        except requests.exceptions.HTTPError as http_err:
+            logging.error(f"HTTP error occurred: {http_err}")
+        except Exception as e:
+            logging.error(f"Failed to send message: {e}")
 
-# Set up logging
-numeric_level = getattr(logging, log_level, None)
-if not isinstance(numeric_level, int):
-    raise ValueError(f'Invalid log level: {log_level}')
-logging.basicConfig(level=numeric_level, format='%(asctime)s - %(levelname)s - %(message)s')
 
-# Mapping of register values to statuses
-statuses = {
-    0: 'available',
-    1: 'occupied',
-    2: 'reserved',
-    3: 'unavailable',
-    4: 'faulted',
-    5: 'preparing',
-    6: 'charging',
-    7: 'suspendedevse',
-    8: 'suspendedev',
-    9: 'finishing'
-}
+def load_config(config_file):
+    with open(config_file, 'r') as file:
+        return yaml.safe_load(file)
 
-last_status = None
+
+def setup_logging(log_level):
+    numeric_level = getattr(logging, log_level.upper(), None)
+    if not isinstance(numeric_level, int):
+        raise ValueError(f'Invalid log level: {log_level}')
+    logging.basicConfig(level=numeric_level, format='%(asctime)s - %(levelname)s - %(message)s')
+
 
 def read_register(client, address, length):
-    """
-    Reads a register from the Modbus client and returns its value.
-    If length is 1, a 16-bit value is returned.
-    If length is 2, a 32-bit value is returned by combining two consecutive 16-bit registers.
-    """
     try:
         result = client.read_holding_registers(address, length, slave=1)
         if result.isError():
@@ -69,47 +66,64 @@ def read_register(client, address, length):
         logging.error(f"Failed to read register at address {address}: {e}")
         return None
 
-while True:
-    logging.debug("Starting new loop iteration")
-    try:
-        client = ModbusTcpClient(modbus_host, port=modbus_port)
-        connection = client.connect()
-        logging.debug(f"Connected to client at {modbus_host}:{modbus_port}")
-    except Exception as e:
-        logging.error(f"Failed to connect to Modbus host: {e}")
-        time.sleep(frequency)
-        continue
 
-    if connection:
-        # Use the read_register function to get the status value
-        status_value = read_register(client, modbus_register_status_address, modbus_register_status_length)
-        client.close()
-        
-        if status_value is not None:
-            status = statuses.get(status_value, 'unknown')
-            logging.debug(f"The status is {status}. Last status is {last_status}")
-            if status != last_status:
-                last_status = status
-                logging.debug(f"Setting last status to {last_status}")
-                url = f'http://{signal_host}:{signal_port}/v2/send'
-                headers = {'Content-Type': 'application/json'}
-                data = {
-                    "message": f"Your charging point status is {status} ({status_value})",
-                    "number": f"{signal_own_number}",
-                    "recipients": [f"{signal_send_number}"]
-                }
-                logging.debug(f"URL for Signal: {url}")
-                logging.debug(f"Headers for Signal: {headers}")
-                logging.debug(f"Data for Signal: {json.dumps(data)}")
-
-                try:
-                    response = requests.post(url, headers=headers, data=json.umps(data))
-                    response.raise_for_status()
-                    logging.info(f"Successfully sent message: {response.text}")
-                except requests.exceptions.HTTPError as http_err:
-                    logging.error(f"HTTP error occurred: {http_err}")
-                except Exception as e:
-                    logging.error(f"Failed to send message: {e}")
+if __name__ == "__main__":
+    # Load configuration
+    config = load_config('config.yaml')
     
-    logging.debug(f"Loop iteration complete, sleeping for {frequency} seconds")
-    time.sleep(frequency)
+    # Setup logging
+    setup_logging(config['log_level'])
+    
+    # Extract configuration variables
+    modbus_config = config['modbus']
+    signal_config = config['signal']
+    
+    # Create SignalMessenger instance
+    messenger = SignalMessenger(signal_config['host'], signal_config['port'], signal_config['own_number'], signal_config['send_number'])
+    
+    # Mapping of register values to statuses
+    statuses = {
+        0: 'available',
+        1: 'occupied',
+        2: 'reserved',
+        3: 'unavailable',
+        4: 'faulted',
+        5: 'preparing',
+        6: 'charging',
+        7: 'suspendedevse',
+        8: 'suspendedev',
+        9: 'finishing'
+    }
+    
+    last_status = None
+
+    while True:
+        logging.debug("Starting new loop iteration")
+        try:
+            client = ModbusTcpClient(modbus_config['host'], port=int(modbus_config['port']))
+            connection = client.connect()
+            logging.debug(f"Connected to client at {modbus_config['host']}:{modbus_config['port']}")
+        except Exception as e:
+            logging.error(f"Failed to connect to Modbus host: {e}")
+            time.sleep(int(signal_config['check_frequency']))
+            continue
+
+        if connection:
+            # Use the read_register function to get the status value
+            status_value = read_register(
+                client,
+                int(modbus_config['registers']['status']['address']),
+                int(modbus_config['registers']['status']['length'])
+            )
+            client.close()
+
+            if status_value is not None:
+                status = statuses.get(status_value, 'unknown')
+                logging.debug(f"The status is {status}. Last status is {last_status}")
+                if status != last_status:
+                    last_status = status
+                    message = f"Your charging point status is {status} ({status_value})"
+                    messenger.send_message(message)
+
+        logging.debug(f"Loop iteration complete, sleeping for {signal_config['check_frequency']} seconds")
+        time.sleep(int(signal_config['check_frequency']))
