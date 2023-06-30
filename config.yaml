@@ -1,18 +1,18 @@
 log_level: DEBUG
 
 modbus: 
-  host: 192.168.2.159
-  port: 4701
+  host: 192.168.178.95
+  port: 502
   registers:
     status: 
-      address: 8092
+      address: 104
       length: 1
     total_energy:
-      address: 8060
+      address: 218
       length: 2
     charged_energy:
-      address: 705
-      length: 1
+      address: 716
+      length: 2
     idtag_1:
       address: 720
       length: 2
@@ -30,8 +30,8 @@ modbus:
       length: 2
 
 signal:
-  host: 192.168.2.25
+  host: 192.168.178.23
   port: 4126
-  own_number: "+4915203056948"
-  send_number: "+4915203056948"
+  own_number: "+4916090638879"
+  send_number: "+4916090638879"
   check_frequency: 10
