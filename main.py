@@ -48,7 +48,9 @@ class ModbusClient:
         self.client.close()
 
     def read_register(self, address, length):
+        time.sleep(1)
         try:
+            logging.debug(f"Reading register {address} (lentgh is {length})")
             result = self.client.read_holding_registers(address, length, slave=1)
             if result.isError():
                 logging.error(f"Error reading register at address {address}")
@@ -75,6 +77,7 @@ class ModbusClient:
             if value is not None:
                 idtag += bytes.fromhex(f'{value:08x}').decode('ascii', errors='ignore').lstrip()
                 logging.debug(f'Partial RFID Tag: "{idtag}"')
+        logging.debug(f'RFID Tag is "{idtag}"')
         return idtag
 
 
@@ -133,14 +136,13 @@ if __name__ == "__main__":
 
                     if status != last_status:
                         last_status = status
-                        message = f"Your charging point status is {status} ({status_value})"
-                        signal_messenger.send_message(message)
-                        # If a new charging session started
+                        message = f"Your charging point status is {status} ({status_value})."
 
-                        time.sleep(1)
+                        # If a new charging session started
                         if status_value == 1: 
                             logging.debug("Status is 1 -> charging started.")
-                            # Read total_energy and idtag registers
+
+                            # Read total_energy
                             total_energy = modbus_client.read_register(
                                 int(config['modbus']['registers']['total_energy']['address']),
                                 int(config['modbus']['registers']['total_energy']['length'])
@@ -148,21 +150,21 @@ if __name__ == "__main__":
                             total_energy = total_energy / 1000
                             result_str = str(total_energy)
                             total_energy = result_str.replace('.', ',')
-                            time.sleep(1)
                             logging.debug(f"Total Energy is: {total_energy}")
-                            idtag = modbus_client.read_idtag(config['modbus'])
-                            #idtag = "TEST"
-                            logging.debug(f'RFID Tag is "{idtag}"')
-                            logging.debug("-----------------------------------")
+                            message += f' Session started -> Total Energy is {total_energy}.'
 
-                            #if idtag:
-                            message = f'Session started -> Total Energy is {total_energy}. RFID Tag is "{idtag}"'
-                            signal_messenger.send_message(message)
+                            # Read RFID Tag
+                            idtag = modbus_client.read_idtag(config['modbus']) 
+                            if idtag:
+                                message += f' RFID Tag is "{idtag}"'
+                            else:
+                                logging.debug("RFID Tag is empty!")
                         
                         # If a charging session finished
                         if status_value == 0:
                             logging.debug("Status is 0 -> charging finished.")
-                            # Read charged_energy and idtag registers
+
+                            # Read total_energy
                             total_energy = modbus_client.read_register(
                                 int(config['modbus']['registers']['total_energy']['address']),
                                 int(config['modbus']['registers']['total_energy']['length'])
@@ -170,7 +172,9 @@ if __name__ == "__main__":
                             total_energy = total_energy / 1000
                             result_str = str(total_energy)
                             total_energy = result_str.replace('.', ',')
-                            time.sleep(1)
+                            logging.debug(f"Total Energy is: {total_energy}")
+                            
+                            # Read charged_energy for the current session
                             charged_energy = modbus_client.read_register(
                                 int(config['modbus']['registers']['charged_energy']['address']),
                                 int(config['modbus']['registers']['charged_energy']['length'])
@@ -178,16 +182,17 @@ if __name__ == "__main__":
                             charged_energy = charged_energy / 1000
                             result_str = str(charged_energy)
                             charged_energy = result_str.replace('.', ',')
-                            logging.debug(f"Charged Energy is: {charged_energy}")
-                            time.sleep(1)
-                            idtag = modbus_client.read_idtag(config['modbus'])
-                            #idtag = "TEST"
-                            logging.debug(f'RFID Tag is "{idtag}"')
-                            logging.debug("-----------------------------------")
+                            logging.debug(f"Charged Energy for current session is: {charged_energy}")
+                            message += f' Session Ended -> Total Energy is {total_energy}. Charged Energy for this session was {charged_energy}.'
 
-                            #if idtag:
-                            message = f'Session Ended -> Total Energy when charging started was {total_energy}. Charged Energy for this session was {charged_energy}. RFID Tag is "{idtag}"'
-                            signal_messenger.send_message(message)
+                            # Read RFID Tag
+                            idtag = modbus_client.read_idtag(config['modbus'])
+                            if idtag:
+                                message += f' RFID Tag is "{idtag}"'
+                            else:
+                                logging.debug("RFID Tag is empty!")
+                        
+                        signal_messenger.send_message(message)
 
             except Exception as e:
                 logging.error(f"Error while reading Modbus registers: {e}")
