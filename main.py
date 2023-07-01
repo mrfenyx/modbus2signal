@@ -173,17 +173,21 @@ if __name__ == "__main__":
                             result_str = str(total_energy)
                             total_energy = result_str.replace('.', ',')
                             logging.debug(f"Total Energy is: {total_energy}")
+                            message += f' Session Ended -> Total Energy is {total_energy}.' 
                             
                             # Read charged_energy for the current session
                             charged_energy = modbus_client.read_register(
                                 int(config['modbus']['registers']['charged_energy']['address']),
                                 int(config['modbus']['registers']['charged_energy']['length'])
                             )
-                            charged_energy = charged_energy / 1000
-                            result_str = str(charged_energy)
-                            charged_energy = result_str.replace('.', ',')
-                            logging.debug(f"Charged Energy for current session is: {charged_energy}")
-                            message += f' Session Ended -> Total Energy is {total_energy}. Charged Energy for this session was {charged_energy}.'
+                            if charged_energy > 0:
+                                charged_energy = charged_energy / 1000
+                                result_str = str(charged_energy)
+                                charged_energy = result_str.replace('.', ',')
+                                logging.debug(f"Charged Energy for current session is: {charged_energy}")
+                                message += f' Charged Energy for this session was {charged_energy}.'
+                            else:
+                                logging.debug("Charged Energy is 0")
 
                             # Read RFID Tag
                             idtag = modbus_client.read_idtag(config['modbus'])
