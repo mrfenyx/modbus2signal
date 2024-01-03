@@ -36,9 +36,10 @@ class SignalMessenger:
 
 class ModbusClient:
 
-    def __init__(self, host, port):
+    def __init__(self, host, port, name):
         self.host = host
         self.port = port
+        self.name = name
         self.client = ModbusTcpClient(self.host, port=self.port)
 
     def connect(self):
@@ -100,7 +101,7 @@ if __name__ == "__main__":
     signal_messenger = SignalMessenger(config['signal']['host'], config['signal']['port'],
                                        config['signal']['own_number'], config['signal']['send_number'])
 
-    modbus_client = ModbusClient(config['modbus']['host'], int(config['modbus']['port']))
+    modbus_client = ModbusClient(config['modbus']['host'], int(config['modbus']['port']), config['modbus']['name'])
 
     if not modbus_client.connect():
         logging.error("Failed to connect to Modbus server.")
@@ -196,7 +197,7 @@ if __name__ == "__main__":
                             else:
                                 logging.debug("RFID Tag is empty!")
                         
-                        signal_messenger.send_message(message)
+                        signal_messenger.send_message("[" + modbus_client.name + "]: " + message)
 
             except Exception as e:
                 logging.error(f"Error while reading Modbus registers: {e}")

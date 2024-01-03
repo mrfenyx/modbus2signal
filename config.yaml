@@ -3,6 +3,7 @@ log_level: DEBUG
 modbus: 
   host: 192.168.178.95
   port: 502
+  name: "Wallbox 1"
   registers:
     status: 
       address: 104
@@ -32,6 +33,6 @@ modbus:
 signal:
   host: 192.168.178.23
   port: 4126
-  own_number: "+4916090638879"
-  send_number: "+4916090638879"
+  own_number: "+4916011111111"
+  send_number: "+4916022222222"
   check_frequency: 10
