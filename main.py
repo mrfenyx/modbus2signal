@@ -5,6 +5,8 @@ import logging
 from pymodbus.client import ModbusTcpClient
 import requests
 import yaml
+import csv
+from datetime import datetime
 
 
 class SignalMessenger:
@@ -78,6 +80,11 @@ class ModbusClient:
             if value is not None:
                 idtag += bytes.fromhex(f'{value:08x}').decode('ascii', errors='ignore').lstrip()
                 logging.debug(f'Partial RFID Tag: "{idtag}"')
+        # Check if the entire composed RFID tag is empty or consists only of null characters
+        if not idtag or idtag.replace('\x00', '') == '':
+            logging.debug('RFID Tag is empty or consists only of null characters')
+            idtag = '<LEER>'
+        
         logging.debug(f'RFID Tag is "{idtag}"')
         return idtag
 
@@ -93,6 +100,23 @@ def setup_logging(log_level):
         raise ValueError(f'Invalid log level: {log_level}')
     logging.basicConfig(level=numeric_level, format='%(asctime)s - %(levelname)s - %(message)s')
 
+def write_to_csv(wallbox, status, rfid_tag, charged_energy, total_energy):
+    # Get the current date and time
+    now = datetime.now()
+    current_date = now.strftime("%d.%m.%Y")
+    current_time = now.strftime("%H:%M:%S")
+
+    # Data to be written to the CSV
+    data = [current_date, current_time, wallbox, status, rfid_tag, total_energy, charged_energy]
+
+    file_name = wallbox.replace(" ", "_") + ".csv"
+
+    # Writing data to CSV
+    with open(file_name, 'a', newline='') as file:
+        writer = csv.writer(file, delimiter=';')
+        writer.writerow(data)
+    
+    logging.debug(f"Data written to {file_name}: {data}")
 
 if __name__ == "__main__":
     config = load_config('config.yaml')
@@ -121,6 +145,7 @@ if __name__ == "__main__":
     }
 
     last_status = None
+    wallbox_name = config['modbus']['name']
     
     try:
         while True:
@@ -160,6 +185,8 @@ if __name__ == "__main__":
                                 message += f' RFID Tag is "{idtag}"'
                             else:
                                 logging.debug("RFID Tag is empty!")
+
+                            write_to_csv(wallbox_name, status, idtag, 0, total_energy)
                         
                         # If a charging session finished
                         if status_value == 0:
@@ -196,6 +223,8 @@ if __name__ == "__main__":
                                 message += f' RFID Tag is "{idtag}"'
                             else:
                                 logging.debug("RFID Tag is empty!")
+
+                            write_to_csv(wallbox_name, status, idtag, charged_energy, total_energy)
                         
                         signal_messenger.send_message("[" + modbus_client.name + "]: " + message)
 
