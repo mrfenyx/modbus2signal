@@ -119,7 +119,7 @@ def write_to_csv(wallbox, status, rfid_tag, charged_energy, total_energy):
     logging.debug(f"Data written to {file_name}: {data}")
 
 if __name__ == "__main__":
-    config = load_config('config.yaml.mircea')
+    config = load_config('config.yaml')
     setup_logging(config['log_level'])
 
     signal_messenger = SignalMessenger(config['signal']['host'], config['signal']['port'],
