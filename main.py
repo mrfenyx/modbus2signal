@@ -109,7 +109,7 @@ def write_to_csv(wallbox, status, rfid_tag, charged_energy, total_energy):
     # Data to be written to the CSV
     data = [current_date, current_time, wallbox, status, rfid_tag, total_energy, charged_energy]
 
-    file_name = wallbox.replace(" ", "_") + ".csv"
+    file_name = os.path.join('Wallbox', wallbox.replace(" ", "_") + ".csv")
 
     # Writing data to CSV
     with open(file_name, 'a', newline='') as file:
@@ -119,7 +119,7 @@ def write_to_csv(wallbox, status, rfid_tag, charged_energy, total_energy):
     logging.debug(f"Data written to {file_name}: {data}")
 
 if __name__ == "__main__":
-    config = load_config('config.yaml')
+    config = load_config('config.yaml.mircea')
     setup_logging(config['log_level'])
 
     signal_messenger = SignalMessenger(config['signal']['host'], config['signal']['port'],
